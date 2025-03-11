@@ -1,18 +1,27 @@
 -- 用户配置
 UserConfig = {
     -- 基础力度
-    power = 5,
+    power = 7,
     -- 脱敏度
-    desensitize = 50,
+    desensitize = 1000,
     -- 启动控制 (scrolllock, capslock, numlock)
-    startControl = "capslock",
+    startControl = "numlock",
     -- 随机偏差范围 (不要设置为0，偏差值越小越容易被检测)
     randomDeviation = 1,
     -- 屏幕分辨率
     screenResolution = {
         width = 2560,
         height = 1440
-    }
+    },
+    -- 是否开启重新开镜
+    refreshAds = 0,
+    -- 移动时间间隔
+    interval = {
+        left = 15,
+        right = 17,
+        ads = 500
+    },
+    debug = 1
 }
 
 -- 开发时使用的工具
@@ -62,18 +71,23 @@ function Main (event, arg, family)
         RunningCache.lastY = y
         ClearLog()
 
+        local start = GetRunningTime()
+
         while (IsStart() and IsPressed(1) and IsPressed(3)) do
         -- while (IsStart() and IsPressed(1)) do
             -- ConsoleLog("-------------------------------")
             -- 调整偏差 ± userConfig.randomDeviation (px)
-            RunningCache.deviationPX = math.max(
-                -UserConfig.randomDeviation,
-                math.min(
-                    UserConfig.randomDeviation,
-                    RunningCache.deviationPX + math.random(-1, 1) -- 随机偏差 ±1
-                )
-            )
+            -- RunningCache.deviationPX = math.max(
+            --     -UserConfig.randomDeviation,
+            --     math.min(
+            --         UserConfig.randomDeviation,
+            --         RunningCache.deviationPX + math.random(-1, 1) -- 随机偏差 ±1
+            --     )
+            -- )
+            local dvt =  UserConfig.randomDeviation
+            RunningCache.deviationPX = math.random(-dvt, dvt)
             -- ConsoleLog(table.concat({ "随机偏差: ", RunningCache.deviation, "px" }))
+            -- OutputLogMessage("随机偏差 %d \n", RunningCache.deviationPX)
 
             -- 力度/移动距离 (px) (基础 + 偏差)
             local powerPX = GetRandomPower()
@@ -82,15 +96,18 @@ function Main (event, arg, family)
             -- 移动鼠标
             MoveMouseRelative(0, powerPX)
 
-            Sleep(math.random(15, 17))
+            local interval = UserConfig.interval
+            Sleep(math.random(interval.left, interval.right))
 
             -- 获取鼠标位置
             local x, y = GetMousePosition()
-            -- ConsoleLog(table.concat({ "x: ", x, ", y: ", y }))
+            if debug == 1 then
+                ConsoleLog(table.concat({ "x: ", x, ", y: ", y }))
+            end
 
             -- 实际移动像素
             local movedPX = Round((y - RunningCache.lastY) / 65535 * UserConfig.screenResolution.height + 1)
-            
+
             -- 偏差像素
             local deviationCounterPX = movedPX - powerPX
             -- ConsoleLog({ "偏差像素: ", deviationCounterPX })
@@ -103,11 +120,11 @@ function Main (event, arg, family)
             RunningCache.lastY = y
 
             -- 预计下一次移动的距离 (px)
-            local nextUnitDistance = GetRandomPower()
+            -- local nextUnitDistance = GetRandomPower()
             -- ConsoleLog(table.concat({ "预计下一次移动的距离: ", nextUnitDistance, "px" }))
 
             -- 底部安全距离
-            local safeDistance = (nextUnitDistance + UserConfig.randomDeviation) / UserConfig.screenResolution.height * 65535
+            -- local safeDistance = (nextUnitDistance + UserConfig.randomDeviation) / UserConfig.screenResolution.height * 65535
             -- ConsoleLog(table.concat({ "底部安全距离: ", safeDistance, "px" }))
 
             -- 当鼠标移到底部，距离底部小于安全距离时，调整到顶部 （小于安全距离会影响下一次计算）
@@ -119,6 +136,13 @@ function Main (event, arg, family)
 
             -- ClearLog()
             -- ConsoleLog(RunningCache)
+
+            -- 模拟重新开镜
+            -- local now = GetRunningTime()
+            -- if userConfig.refreshAds == 1 and (now - start) >= userConfig.internal.ads then
+            --     ReleaseMouseButton(3)
+            --     PressMouseButton(3)
+            -- end
         end
 
         -- 重置缓存
@@ -127,8 +151,21 @@ function Main (event, arg, family)
     end
 end
 
+-- 调整参数
+function updateArgs (event, arg, family)
+    if event == "MOUSE_BUTTON_PRESSED" and family == "mouse" then
+        if arg == 7 then
+            UserConfig.power = UserConfig.power - 1
+        elseif arg == 8 then
+            UserConfig.power = UserConfig.power + 1 
+        end
+        OutputLogMessage("current power = %d \n", UserConfig.power)
+    end
+end
+
 -- 入口函数
 function OnEvent (event, arg, family)
+    -- OutputLogMessage("event = %s, arg = %s, family = %s \n", event, arg, family)
     -- 与 IsMouseButtonPressed 方法统一
     if arg == 2 then arg = 3 elseif arg == 3 then arg = 2 end
 
@@ -138,21 +175,22 @@ function OnEvent (event, arg, family)
     -- 进入压枪循环
     Main(event, arg, family)
     -- 右键长按 300ms 以上，认定为开镜了，放开右键后，按下 tab 两次，重置鼠标位置
-    if event == "MOUSE_BUTTON_PRESSED" and arg == 3 and family == "mouse" then
-        RunningCache.rightMouseDownTimestamp = GetRunningTime()
-    end
+    -- if event == "MOUSE_BUTTON_PRESSED" and arg == 3 and family == "mouse" then
+    --     RunningCache.rightMouseDownTimestamp = GetRunningTime()
+    -- end
 
-    if event == "MOUSE_BUTTON_RELEASED" and arg == 3 and family == "mouse" then
-        -- 右键按下时长
-        local rightMouseDownDuration = GetRunningTime() - RunningCache.rightMouseDownTimestamp
-        -- ConsoleLog({ "右键按下时长: ", rightMouseDownDuration, "ms" })
+    -- if event == "MOUSE_BUTTON_RELEASED" and arg == 3 and family == "mouse" then
+    --     -- 右键按下时长
+    --     local rightMouseDownDuration = GetRunningTime() - RunningCache.rightMouseDownTimestamp
+    --     -- ConsoleLog({ "右键按下时长: ", rightMouseDownDuration, "ms" })
 
-        -- 重置鼠标位置
-        if (rightMouseDownDuration >= 300 and not IsPressed(1)) then
-            PressAndReleaseKey('tab')
-            PressAndReleaseKey('tab')
-        end
-    end
+    --     -- 重置鼠标位置
+    --     if (rightMouseDownDuration >= 300 and not IsPressed(1)) then
+    --         PressAndReleaseKey('tab')
+    --         PressAndReleaseKey('tab')
+    --     end
+    -- end
+    updateArgs(event, arg, family)
 
     -- 释放所有占用的按键
     if event == "PROFILE_DEACTIVATED" then
