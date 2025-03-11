@@ -1,7 +1,7 @@
 -- 用户配置
 UserConfig = {
     -- 基础力度
-    power = 7,
+    power = 15,
     -- 脱敏度
     desensitize = 1000,
     -- 启动控制 (scrolllock, capslock, numlock)
@@ -17,8 +17,8 @@ UserConfig = {
     refreshAds = 0,
     -- 移动时间间隔
     interval = {
-        left = 15,
-        right = 17,
+        left = 50,
+        right = 60,
         ads = 500
     },
     debug = 1
@@ -60,7 +60,10 @@ function Round (num) return math.floor(num + 0.5) end
 
 -- 获取随机力度 (px)
 function GetRandomPower ()
-    return UserConfig.power + RunningCache.deviationPX + Round(RunningCache.deviationCounterPX / UserConfig.desensitize)
+    local dmy = math.min(Round(RunningCache.deviationCounterPX * RunningCache.deviationCounterPX / UserConfig.desensitize), UserConfig.power - 6);
+    OutputLogMessage("dmy = %f \n", dmy)
+    return UserConfig.power + RunningCache.deviationPX + dmy
+    -- return UserConfig.power + RunningCache.deviationPX
 end
 
 -- 主体功能 （压枪循环）
@@ -100,38 +103,47 @@ function Main (event, arg, family)
             Sleep(math.random(interval.left, interval.right))
 
             -- 获取鼠标位置
-            local x, y = GetMousePosition()
-            if debug == 1 then
-                ConsoleLog(table.concat({ "x: ", x, ", y: ", y }))
-            end
+            -- local x, y = GetMousePosition()
+             -- ConsoleLog(table.concat({ "x: ", x, ", y: ", y }))
+            -- if UserConfig.debug == 1 then
+            --     OutputLogMessage("x = %d, y = %d \n", x, y)
+            -- end
 
             -- 实际移动像素
-            local movedPX = Round((y - RunningCache.lastY) / 65535 * UserConfig.screenResolution.height + 1)
+            -- local movedPX = Round((y - RunningCache.lastY) / 65535 * UserConfig.screenResolution.height + 1)
+            local movedPX = powerPX
 
             -- 偏差像素
-            local deviationCounterPX = movedPX - powerPX
+            -- local deviationCounterPX = movedPX - powerPX
+            local deviationCounterPX = movedPX / 3
+            if UserConfig.debug == 1 then
+                OutputLogMessage("偏差像素 %f \n", deviationCounterPX)
+            end
             -- ConsoleLog({ "偏差像素: ", deviationCounterPX })
 
             -- 累计偏差像素
             RunningCache.deviationCounterPX = RunningCache.deviationCounterPX + deviationCounterPX
+            if UserConfig.debug == 1 then
+                OutputLogMessage("累计偏差像素 %f \n", RunningCache.deviationCounterPX)
+            end
             -- ConsoleLog({ "累计偏差像素:", RunningCache.deviationCounterPX })
 
             -- 记录 Y 轴位置
             RunningCache.lastY = y
 
             -- 预计下一次移动的距离 (px)
-            -- local nextUnitDistance = GetRandomPower()
+            local nextUnitDistance = GetRandomPower()
             -- ConsoleLog(table.concat({ "预计下一次移动的距离: ", nextUnitDistance, "px" }))
 
             -- 底部安全距离
-            -- local safeDistance = (nextUnitDistance + UserConfig.randomDeviation) / UserConfig.screenResolution.height * 65535
+            local safeDistance = (nextUnitDistance + UserConfig.randomDeviation) / UserConfig.screenResolution.height * 65535
             -- ConsoleLog(table.concat({ "底部安全距离: ", safeDistance, "px" }))
 
             -- 当鼠标移到底部，距离底部小于安全距离时，调整到顶部 （小于安全距离会影响下一次计算）
             -- if (y >= 65535 - safeDistance) then
-            --     -- MoveMouseTo(x, 1)
-            --     -- RunningCache.lastY = 1
-            --     break
+            --     MoveMouseTo(x, 1)
+            --     RunningCache.lastY = 1
+            --     --break
             -- end
 
             -- ClearLog()
@@ -156,16 +168,19 @@ function updateArgs (event, arg, family)
     if event == "MOUSE_BUTTON_PRESSED" and family == "mouse" then
         if arg == 7 then
             UserConfig.power = UserConfig.power - 1
+            OutputLogMessage("current power = %d \n", UserConfig.power)
         elseif arg == 8 then
             UserConfig.power = UserConfig.power + 1 
+            OutputLogMessage("current power = %d \n", UserConfig.power)
         end
-        OutputLogMessage("current power = %d \n", UserConfig.power)
     end
 end
 
 -- 入口函数
 function OnEvent (event, arg, family)
-    -- OutputLogMessage("event = %s, arg = %s, family = %s \n", event, arg, family)
+    if UserConfig.debug == 1 then
+        OutputLogMessage("event = %s, arg = %s, family = %s \n", event, arg, family)
+    end
     -- 与 IsMouseButtonPressed 方法统一
     if arg == 2 then arg = 3 elseif arg == 3 then arg = 2 end
 
