@@ -1,13 +1,19 @@
 -- 用户配置
 UserConfig = {
     -- 基础力度
-    power = 15,
+    power = 13,
     -- 脱敏度
     desensitize = 1000,
     -- 启动控制 (scrolllock, capslock, numlock)
     startControl = "numlock",
-    -- 随机偏差范围 (不要设置为0，偏差值越小越容易被检测)
-    randomDeviation = 1,
+    -- 0 通用 >0为定制
+    customType = 0,
+    -- 随机偏差范围
+    randomDeviation = {
+        x = 1,
+        y = 1,
+        interval = 1
+    },
     -- 屏幕分辨率
     screenResolution = {
         width = 2560,
@@ -16,12 +22,23 @@ UserConfig = {
     -- 是否开启重新开镜
     refreshAds = 0,
     -- 移动时间间隔
+    -- 时间间隔
     interval = {
-        left = 50,
-        right = 60,
+        move = 50,
         ads = 500
     },
     debug = 1
+}
+--倍镜akm 14 24 36   berl 18 29 40
+customFile = {
+    {
+        {85,20},
+        {85,20}
+    },
+    {
+        {100,25},
+        {100,25}
+    }
 }
 
 -- 开发时使用的工具
@@ -60,9 +77,11 @@ function Round (num) return math.floor(num + 0.5) end
 
 -- 获取随机力度 (px)
 function GetRandomPower ()
-    local dmy = math.min(Round(RunningCache.deviationCounterPX * RunningCache.deviationCounterPX / UserConfig.desensitize), UserConfig.power - 6);
-    OutputLogMessage("dmy = %f \n", dmy)
-    return UserConfig.power + RunningCache.deviationPX + dmy
+    local dynamic = math.min(Round(RunningCache.deviationCounterPX * RunningCache.deviationCounterPX / UserConfig.desensitize), UserConfig.power - 6);
+    if UserConfig.debug == 1 then
+        OutputLogMessage("dynamic = %f \n", dynamic)
+    end
+    return UserConfig.power + RunningCache.deviationPX + dynamic
     -- return UserConfig.power + RunningCache.deviationPX
 end
 
@@ -87,24 +106,24 @@ function Main (event, arg, family)
             --         RunningCache.deviationPX + math.random(-1, 1) -- 随机偏差 ±1
             --     )
             -- )
-            local dvt =  UserConfig.randomDeviation
-            RunningCache.deviationPX = math.random(-dvt, dvt)
-            -- ConsoleLog(table.concat({ "随机偏差: ", RunningCache.deviation, "px" }))
+            local dvtY =  UserConfig.randomDeviation.y
+            RunningCache.deviationPX = math.random(-dvtY, dvtY)
             -- OutputLogMessage("随机偏差 %d \n", RunningCache.deviationPX)
 
             -- 力度/移动距离 (px) (基础 + 偏差)
             local powerPX = GetRandomPower()
             -- ConsoleLog(table.concat({ "力度/移动距离: ", power, "px" }))
-
+            
+            local dvtX =  UserConfig.randomDeviation.x
             -- 移动鼠标
-            MoveMouseRelative(0, powerPX)
+            MoveMouseRelative(math.random(-dvtX, dvtX), powerPX)
 
-            local interval = UserConfig.interval
-            Sleep(math.random(interval.left, interval.right))
+            local interval = UserConfig.interval.move
+            local intervalDvt = UserConfig.randomDeviation.interval
+            Sleep(interval + math.random(-intervalDvt, intervalDvt))
 
             -- 获取鼠标位置
             -- local x, y = GetMousePosition()
-             -- ConsoleLog(table.concat({ "x: ", x, ", y: ", y }))
             -- if UserConfig.debug == 1 then
             --     OutputLogMessage("x = %d, y = %d \n", x, y)
             -- end
@@ -115,7 +134,7 @@ function Main (event, arg, family)
 
             -- 偏差像素
             -- local deviationCounterPX = movedPX - powerPX
-            local deviationCounterPX = movedPX / 3
+            local deviationCounterPX = movedPX / 2
             if UserConfig.debug == 1 then
                 OutputLogMessage("偏差像素 %f \n", deviationCounterPX)
             end
@@ -129,14 +148,14 @@ function Main (event, arg, family)
             -- ConsoleLog({ "累计偏差像素:", RunningCache.deviationCounterPX })
 
             -- 记录 Y 轴位置
-            RunningCache.lastY = y
+            -- RunningCache.lastY = y
 
             -- 预计下一次移动的距离 (px)
-            local nextUnitDistance = GetRandomPower()
+            -- local nextUnitDistance = GetRandomPower()
             -- ConsoleLog(table.concat({ "预计下一次移动的距离: ", nextUnitDistance, "px" }))
 
             -- 底部安全距离
-            local safeDistance = (nextUnitDistance + UserConfig.randomDeviation) / UserConfig.screenResolution.height * 65535
+            -- local safeDistance = (nextUnitDistance + UserConfig.randomDeviation) / UserConfig.screenResolution.height * 65535
             -- ConsoleLog(table.concat({ "底部安全距离: ", safeDistance, "px" }))
 
             -- 当鼠标移到底部，距离底部小于安全距离时，调整到顶部 （小于安全距离会影响下一次计算）
