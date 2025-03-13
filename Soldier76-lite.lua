@@ -6,6 +6,8 @@ UserConfig = {
     desensitize = 1000,
     -- 启动控制 (scrolllock, capslock, numlock)
     startControl = "numlock",
+    -- 倍镜系数 默认一倍
+    scope = 1,
     -- 0 通用 >0为定制
     customType = 0,
     -- 随机偏差范围
@@ -27,18 +29,13 @@ UserConfig = {
         move = 50,
         ads = 500
     },
-    debug = 1
+    debug = 0,
+    printCustom = 0,
 }
---倍镜akm 14 24 36   berl 18 29 40
-customFile = {
-    {
-        {85,20},
-        {85,20}
-    },
-    {
-        {100,25},
-        {100,25}
-    }
+
+Temp = {
+    power = 0,
+    scope = 1
 }
 
 -- 开发时使用的工具
@@ -76,25 +73,58 @@ end
 function Round (num) return math.floor(num + 0.5) end
 
 -- 获取随机力度 (px)
-function GetRandomPower ()
-    local dynamic = math.min(Round(RunningCache.deviationCounterPX * RunningCache.deviationCounterPX / UserConfig.desensitize), UserConfig.power - 6);
+function GetRandomPower (index)
+    local custom = UserConfig.customType
+    local dynamic = 0
+    if custom == 0 then
+        dynamic = math.min(Round(RunningCache.deviationCounterPX * RunningCache.deviationCounterPX / UserConfig.desensitize), UserConfig.power*2/3);
+    else
+        local len = #CustomList[custom]
+        dynamic = CustomList[custom][math.min(index, len)][2]
+    end
     if UserConfig.debug == 1 then
         OutputLogMessage("dynamic = %f \n", dynamic)
     end
     return UserConfig.power + RunningCache.deviationPX + dynamic
-    -- return UserConfig.power + RunningCache.deviationPX
+end
+
+-- 获取随机间隔 (px)
+function GetRandomInterval (index)
+    local interval = 0
+    local custom = UserConfig.customType
+    if custom == 0 then
+        interval = UserConfig.interval.move
+    else
+        local len = #CustomList[custom]
+        interval = CustomList[custom][math.min(index, len)][1]
+    end
+    local dvt = UserConfig.randomDeviation.interval
+    if UserConfig.debug == 1 then
+        OutputLogMessage("interval = %f \n", interval)
+    end
+    return (interval + math.random(-dvt, dvt))
+end
+
+-- 获取倍镜系数
+function GetScopeMultiple (powerPX)
+    local currentScope = UserConfig.scope
+    return Round(powerPX * ScopeList[currentScope])
 end
 
 -- 主体功能 （压枪循环）
 function Main (event, arg, family)
     if event == "MOUSE_BUTTON_PRESSED" and arg == 1 and family == "mouse" then
         -- 启动前先获取一次 Y 轴位置
-        local x, y = GetMousePosition()
-        RunningCache.lastY = y
-        ClearLog()
+        -- local x, y = GetMousePosition()
+        -- RunningCache.lastY = y
+        -- ClearLog()
+        if UserConfig.debug == 1 then
+            OutputLogMessage("event=%s, arg=%d, family=%s\n", event, arg, family)
+        end
 
         local start = GetRunningTime()
 
+        local index = 1
         while (IsStart() and IsPressed(1) and IsPressed(3)) do
         -- while (IsStart() and IsPressed(1)) do
             -- ConsoleLog("-------------------------------")
@@ -111,16 +141,21 @@ function Main (event, arg, family)
             -- OutputLogMessage("随机偏差 %d \n", RunningCache.deviationPX)
 
             -- 力度/移动距离 (px) (基础 + 偏差)
-            local powerPX = GetRandomPower()
-            -- ConsoleLog(table.concat({ "力度/移动距离: ", power, "px" }))
-            
+            local powerPX = GetRandomPower(index)
+
+            -- 获取倍镜系数
+            powerPX = GetScopeMultiple(powerPX)
+
+            if UserConfig.printCustom == 1 then
+                OutputLogMessage("{%d, %d},\n", UserConfig.interval.move, powerPX)
+            end
+
             local dvtX =  UserConfig.randomDeviation.x
             -- 移动鼠标
             MoveMouseRelative(math.random(-dvtX, dvtX), powerPX)
 
-            local interval = UserConfig.interval.move
-            local intervalDvt = UserConfig.randomDeviation.interval
-            Sleep(interval + math.random(-intervalDvt, intervalDvt))
+            local interval = GetRandomInterval(index)
+            Sleep(interval)
 
             -- 获取鼠标位置
             -- local x, y = GetMousePosition()
@@ -134,7 +169,7 @@ function Main (event, arg, family)
 
             -- 偏差像素
             -- local deviationCounterPX = movedPX - powerPX
-            local deviationCounterPX = movedPX / 2
+            local deviationCounterPX = movedPX / 3
             if UserConfig.debug == 1 then
                 OutputLogMessage("偏差像素 %f \n", deviationCounterPX)
             end
@@ -145,7 +180,6 @@ function Main (event, arg, family)
             if UserConfig.debug == 1 then
                 OutputLogMessage("累计偏差像素 %f \n", RunningCache.deviationCounterPX)
             end
-            -- ConsoleLog({ "累计偏差像素:", RunningCache.deviationCounterPX })
 
             -- 记录 Y 轴位置
             -- RunningCache.lastY = y
@@ -169,11 +203,14 @@ function Main (event, arg, family)
             -- ConsoleLog(RunningCache)
 
             -- 模拟重新开镜
-            -- local now = GetRunningTime()
-            -- if userConfig.refreshAds == 1 and (now - start) >= userConfig.internal.ads then
-            --     ReleaseMouseButton(3)
-            --     PressMouseButton(3)
-            -- end
+            local now = GetRunningTime()
+            if UserConfig.refreshAds == 1 and (now - start) >= UserConfig.internal.ads then
+                ReleaseMouseButton(3)
+                PressMouseButton(3)
+                start = now
+            end
+
+            index = index + 1
         end
 
         -- 重置缓存
@@ -182,15 +219,66 @@ function Main (event, arg, family)
     end
 end
 
+function UpdateArgsScope(step)
+    local len = #ScopeList
+    local index = UserConfig.scope + step
+    if index > len then
+        index = len
+    elseif index < 1 then
+        index = 1
+    end
+    UserConfig.scope = index
+end
+
+
+function UpdateArgsCustome(step) 
+    local len = #CustomList
+    local index = UserConfig.customType + step
+    if index > len then
+        index = len
+        UserConfig.customType = index
+    elseif index == 0 then
+        UserConfig.power = Temp.power
+        Temp.power = 0
+        UserConfig.customType = index
+    elseif index < 0 then
+        index = 0
+    else
+        UserConfig.customType = index
+        if Temp.power == 0 then Temp.power = UserConfig.power end
+        UserConfig.power = 0
+    end
+end
+
 -- 调整参数
-function updateArgs (event, arg, family)
+function UpdateArgs (event, arg, family)
     if event == "MOUSE_BUTTON_PRESSED" and family == "mouse" then
         if arg == 7 then
-            UserConfig.power = UserConfig.power - 1
-            OutputLogMessage("current power = %d \n", UserConfig.power)
+            if IsModifierPressed("lctrl") then
+                UpdateArgsScope(-1)
+            elseif IsModifierPressed("lalt") then
+                UpdateArgsCustome(-1)
+            else
+                UserConfig.power = UserConfig.power - 1
+            end
+            OutputLogMessage("power = %d scope = %d customType = %d \n", UserConfig.power, UserConfig.scope, UserConfig.customType)
         elseif arg == 8 then
-            UserConfig.power = UserConfig.power + 1 
-            OutputLogMessage("current power = %d \n", UserConfig.power)
+            if IsModifierPressed("lctrl") then
+                UpdateArgsScope(1)
+            elseif IsModifierPressed("lalt") then
+                UpdateArgsCustome(1)
+            else
+                UserConfig.power = UserConfig.power + 1
+            end
+            OutputLogMessage("power = %d scope = %d customType = %d \n", UserConfig.power, UserConfig.scope, UserConfig.customType)
+        elseif arg == 3 and IsModifierPressed("lalt") then
+            if UserConfig.scope == 1 and Temp.scope ~= 1 then
+                UserConfig.scope = Temp.scope
+            else
+                Temp.scope = UserConfig.scope
+                UserConfig.scope = 1
+            end
+            OutputLogMessage("power = %d scope = %d customType = %d \n", UserConfig.power, UserConfig.scope, UserConfig.customType)
         end
     end
 end
@@ -224,7 +312,7 @@ function OnEvent (event, arg, family)
     --         PressAndReleaseKey('tab')
     --     end
     -- end
-    updateArgs(event, arg, family)
+    UpdateArgs(event, arg, family)
 
     -- 释放所有占用的按键
     if event == "PROFILE_DEACTIVATED" then
@@ -243,3 +331,121 @@ end
 EnablePrimaryMouseButtonEvents(true)
 -- 设置随机数种子
 math.randomseed(GetRunningTime())
+
+
+--倍镜倍数大约为1.5 akm 14 24 36   beryl 18 29 40
+ScopeList = {1, 1.5, 2.2, 3.3}
+
+CustomList = {
+    {
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 6},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 7},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 8},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 10},
+        {25, 10},
+        {25, 10},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 9},
+        {25, 10},
+        {25, 10},
+        {25, 10},
+        {25, 10}
+    },
+    {
+        {100,25},
+        {100,25}
+    }
+}
