@@ -1,19 +1,28 @@
 -- 用户配置
 UserConfig = {
     -- 基础力度 5%-1 制退器8%-2 消焰器10%-3 补偿器15%-5
-    -- 裸枪/消焰器 ：scar-16/14 akm/m4/qbz-19/15 ace-21/17 aug-23/19 beryl-28/23
     -- 裸枪：PP19-10 tomson-16 ump-13 vector-21/14 mp5-14
     -- m249-7 dp dp28-8
-    power = 14,
+
+    -- m249     17  0.9     100
+    -- scar     35  0.45    150
+    -- qbz      40  0.4     150
+    -- akm/m4   41  0.5     160
+    -- g36c     42  0.4     160
+    -- m4a1/ace 45  0.5     150
+    -- aug      51  0.35    130
+    -- beryl    55  0.5     150
+    power = 40,
     powerRatio = 5,
+    initRatio = 0.5,
     -- 脱敏度
-    desensitize = 320,
+    desensitize = 150,
     -- 启动控制 (scrolllock, capslock, numlock)
     startControl = "numlock",
     -- 倍镜系数 默认一倍
     scope = 1,
-    -- 0 无 1线性 2二次函数
-    dynamicType = 2,
+    -- 0 无 1线性 2二次函数 3sigmiod
+    dynamicType = 1,
     -- 0 通用 >0为定制
     customType = 0,
     -- 自动根据蹲起跳转power
@@ -41,7 +50,7 @@ UserConfig = {
         move = 10,
         ads = 1000
     },
-    debug = 0,
+    debug = 1,
     printCustom = 0,
 }
 
@@ -63,6 +72,38 @@ RunningCache = {
     squat = 0,
     customList = {}
 }
+
+-- 获取随机力度 (px)
+function GetRandomPower (index)
+    local power = UserConfig.power
+    local initRatio = UserConfig.initRatio
+    local custom = UserConfig.customType
+    local dynamicType = UserConfig.dynamicType
+    local dynamic = 0
+    local dvt =  GetRandomDeviation(UserConfig.randomDeviation.y)
+    -- local dvt =  0
+    if custom == 0 then
+        if dynamicType == 1 then
+            dynamic =  math.min(power * initRatio + index * power / UserConfig.desensitize, power);
+        elseif dynamicType == 2 then
+            -- dynamic = math.min(Round(index * index * power / UserConfig.desensitize), Round(power*4/5));
+            dynamic = math.min(power * initRatio  + index * index / UserConfig.desensitize, power);
+        elseif dynamicType == 3 then
+            dynamic = power * initRatio + (power * (1 - initRatio)) / (1 + 2^(60-index));
+        end
+        if index < 3 then
+            dynamic = dynamic * 2
+        end
+        -- if UserConfig.debug == 1 then
+        --     OutputLogMessage("power = %f, dynamic = %f \n", power, dynamic)
+        -- end
+        return GetInfactPower(math.floor(dynamic), index) + dvt
+    else
+        local len = #CustomList[custom]
+        dynamic = CustomList[custom][math.min(index, len)][2]
+        return GetInfactPower(power, index) + dynamic + dvt
+    end
+end
 
 -- 启用鼠标按键 1 事件报告
 EnablePrimaryMouseButtonEvents(true)
@@ -188,41 +229,13 @@ end
 -- 四舍五入
 function Round (num) return math.floor(num + 0.5) end
 
--- 获取随机力度 (px)
-function GetRandomPower (index)
-    local power = UserConfig.power
-    local custom = UserConfig.customType
-    local dynamicType = UserConfig.dynamicType
-    local dynamic = 0
-    local dvt =  GetRandomDeviation(UserConfig.randomDeviation.y)
-    -- local dvt =  0
-    if custom == 0 then
-        if dynamicType == 1 then
-            dynamic = math.min(index * power // UserConfig.desensitize, power*2//3);
-        elseif dynamicType == 2 then
-            -- dynamic = math.min(Round(index * index * power / UserConfig.desensitize), Round(power*4/5));
-            dynamic = math.min(index * index // UserConfig.desensitize, power*2//3);
-        end
-        -- if UserConfig.debug == 1 then
-        --     OutputLogMessage("dynamic = %f \n", dynamic)
-        -- end
-        if index < 5 then
-            power = power * 2
-        end
-        return GetInfactPower(power + dynamic, index) + dvt
-    else
-        local len = #CustomList[custom]
-        dynamic = CustomList[custom][math.min(index, len)][2]
-        return GetInfactPower(power, index) + dynamic + dvt
-    end
-end
 
 function GetInfactPower (power, index)
     local ratio = UserConfig.powerRatio
-    local divided = power // ratio
+    local divided = math.floor(power / ratio)
     local remainderPower = power % ratio
     local remainderIndex = index % ratio
-    if remainderPower + remainderIndex > ratio then
+    if remainderPower + remainderIndex >= ratio then
         return divided + 1
     end
     return divided
